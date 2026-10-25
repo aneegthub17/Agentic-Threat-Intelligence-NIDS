@@ -26,7 +26,8 @@ from detection_engine.models.tabular_transformer import TabularTransformer
 
 
 # ============================================================
-# CONFIGURATION
+# CONFIGURATION 
+# "These are hyperparameters selected to balance computational efficiency, training stability, generalization, and model performance. Some parameters, such as the number of features and classes, are determined by the problem and dataset rather than tuned."
 # ============================================================
 
 BATCH_SIZE = 256

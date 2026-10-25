@@ -9,6 +9,7 @@ from security_orchestrator.agents.risk_assessment_agent import (
     RiskAssessmentAgent,
 )
 from security_orchestrator.agents.memory_agent import MemoryAgent
+from security_orchestrator.reporting.report_generator import ReportGenerator
 
 
 class SecurityOrchestrator:
@@ -18,10 +19,14 @@ class SecurityOrchestrator:
         # Load the trained Transformer only when a model isn't injected.
         self.model = model if model is not None else load_model()
 
+        # Initialize the four investigation agents.
         self.detection_agent = DetectionAgent()
         self.threat_agent = ThreatIntelligenceAgent()
         self.risk_agent = RiskAssessmentAgent()
         self.memory_agent = memory_agent or MemoryAgent()
+
+        # Initialize the report generator.
+        self.report_generator = ReportGenerator()
 
     def analyze(self, features, traffic_features=None):
         # 1. Run Transformer inference.
@@ -49,17 +54,26 @@ class SecurityOrchestrator:
             threat_analysis=threat_analysis,
         )
 
-        # 5. Store the incident.
+        # 5. Store the incident in memory.
         memory_record = self.memory_agent.store(
             detection,
             risk_assessment,
             threat_analysis,
         )
 
-        # 6. Return a structured result for reporting.
+        # 6. Generate the incident report.
+        report = self.report_generator.generate(
+            detection=detection,
+            threat_analysis=threat_analysis,
+            risk_assessment=risk_assessment,
+            memory_record=memory_record,
+        )
+
+        # 7. Return all agent outputs and the generated report.
         return {
             "detection": detection,
             "threat_analysis": threat_analysis,
             "risk_assessment": risk_assessment,
             "memory_record": memory_record,
+            "report": report,
         }

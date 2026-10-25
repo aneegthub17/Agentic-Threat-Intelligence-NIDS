@@ -90,6 +90,27 @@ class TestReportGenerator(unittest.TestCase):
         )
 
         self.assertNotEqual(first["report_id"], second["report_id"])
+    def test_report_includes_xai_explanation(self):
+        explanation = {
+            "method": "gradient_x_input",
+            "top_features": [
+                {"feature": "src_packets", "attribution": 0.75}
+            ],
+        }
+
+        report = self.generator.generate(
+            self.detection,
+            self.threat_analysis,
+            self.risk_assessment,
+            xai_explanation=explanation,
+        )
+
+        self.assertEqual(report["xai_explanation"], explanation)
+        self.assertEqual(
+            report["xai_explanation"]["method"],
+            "gradient_x_input",
+        )
+
 
 
 if __name__ == "__main__":

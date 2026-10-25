@@ -12,6 +12,7 @@ class ReportGenerator:
         threat_analysis,
         risk_assessment,
         memory_record=None,
+        xai_explanation=None,
     ):
         if not isinstance(detection, dict):
             raise TypeError("detection must be a dictionary")
@@ -39,6 +40,18 @@ class ReportGenerator:
         risk_level = risk_assessment.get("risk_level")
         if risk_level not in ("LOW", "MEDIUM", "HIGH"):
             raise ValueError("Unsupported risk level")
+
+        if xai_explanation is None:
+            xai_explanation = {
+                "status": "not_provided",
+                "method": None,
+                "top_features": [],
+                "interpretation_note": (
+                    "No feature explanation was provided."
+                ),
+            }
+        elif not isinstance(xai_explanation, dict):
+            raise TypeError("xai_explanation must be a dictionary")
 
         if prediction == "Attack":
             summary = (
@@ -70,6 +83,7 @@ class ReportGenerator:
                 "confidence": confidence,
                 "probabilities": detection.get("probabilities", {}),
             },
+            "xai_explanation": xai_explanation,
             "threat_analysis": {
                 "summary": threat_analysis.get("summary", ""),
                 "observed_features": threat_analysis.get(
@@ -95,6 +109,8 @@ class ReportGenerator:
             "limitations": [
                 "The detection confidence is not a calibrated probability "
                 "of real-world threat severity.",
+                "Feature attributions are local explanations, not proof "
+                "of causation or calibrated risk scores.",
                 "Threat-intelligence retrieval is not performed unless "
                 "explicitly implemented by the threat-analysis component.",
                 "Risk assessment is preliminary and rule-based.",

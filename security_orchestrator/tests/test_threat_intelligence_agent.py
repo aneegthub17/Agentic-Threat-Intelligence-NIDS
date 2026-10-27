@@ -57,6 +57,78 @@ class TestThreatIntelligenceAgent(unittest.TestCase):
             result["observed_features"]["protocol"], "TCP"
         )
 
+    def test_retrieval_is_used_when_configured(self):
+
+        class FakeRetriever:
+            def __init__(self):
+                self.called = False
+                self.query = None
+                self.top_k = None
+
+            def retrieve(self, query, top_k=3):
+                self.called = True
+                self.query = query
+                self.top_k = top_k
+
+                return [
+                    {
+                        "document_id": "nist-800-61-r3",
+                        "title": "NIST Incident Response Guidance",
+                        "source": "NIST",
+                        "source_url": (
+                            "https://csrc.nist.gov/pubs/sp/800/61/r3/final"
+                        ),
+                        "content": "Incident response guidance.",
+                        "matched_terms": ["incident"],
+                        "score": 0.5,
+                    }
+                ]
+
+        retriever = FakeRetriever()
+        agent = ThreatIntelligenceAgent(retriever=retriever)
+
+        result = agent.process(
+            {
+                "status": "valid",
+                "prediction": "Attack",
+            },
+            traffic_features={
+                "incident_response": "incident response",
+            },
+        )
+
+        self.assertTrue(retriever.called)
+        self.assertIn("incident response", retriever.query)
+        self.assertEqual(retriever.top_k, 3)
+        self.assertTrue(result["retrieval_performed"])
+
+        self.assertEqual(
+            result["sources"][0]["document_id"],
+            "nist-800-61-r3",
+        )
+        self.assertEqual(
+            result["sources"][0]["source_url"],
+            "https://csrc.nist.gov/pubs/sp/800/61/r3/final",
+        )
+
+    def test_empty_retrieval_returns_no_sources(self):
+
+        class EmptyRetriever:
+            def retrieve(self, query, top_k=3):
+                return []
+
+        agent = ThreatIntelligenceAgent(retriever=EmptyRetriever())
+
+        result = agent.process(
+            {
+                "status": "valid",
+                "prediction": "Normal",
+            }
+        )
+
+        self.assertTrue(result["retrieval_performed"])
+        self.assertEqual(result["sources"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

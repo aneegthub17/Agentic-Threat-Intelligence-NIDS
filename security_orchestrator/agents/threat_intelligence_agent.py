@@ -1,11 +1,12 @@
 
 class ThreatIntelligenceAgent:
     """
-    Analyses a validated NIDS detection record.
-
-    This initial version does not perform external retrieval or
-    infer a specific attack family from a binary prediction.
+    Analyse validated detections and optionally retrieve local
+    cybersecurity references for additional context.
     """
+
+    def __init__(self, retriever=None):
+        self.retriever = retriever
 
     def process(self, detection_record, traffic_features=None):
         if not isinstance(detection_record, dict):
@@ -31,7 +32,6 @@ class ThreatIntelligenceAgent:
                 "This result does not guarantee that the traffic is benign."
             )
 
-        # Only summarise features actually supplied by the caller.
         feature_summary = {}
 
         if traffic_features is not None:
@@ -45,10 +45,38 @@ class ThreatIntelligenceAgent:
                 or value is None
             }
 
+        evidence = []
+
+        if self.retriever is not None:
+            query_parts = []
+
+            for key, value in feature_summary.items():
+                # Feature names provide context; use text values only
+                # when they may help identify a relevant reference.
+                query_parts.append(key.replace("_", " "))
+
+                if isinstance(value, str):
+                    query_parts.append(value)
+
+            query = " ".join(query_parts).strip()
+
+            # Retrieve references only when traffic context is available.
+            retrieved = (
+                self.retriever.retrieve(query, top_k=3)
+                if query
+                else []
+            )
+
+            from security_orchestrator.rag.evidence_formatter import (
+                EvidenceFormatter,
+            )
+
+            evidence = EvidenceFormatter.format_results(retrieved)
+
         return {
             "prediction": prediction,
             "summary": summary,
             "observed_features": feature_summary,
-            "retrieval_performed": False,
-            "sources": [],
+            "retrieval_performed": self.retriever is not None,
+            "sources": evidence,
         }

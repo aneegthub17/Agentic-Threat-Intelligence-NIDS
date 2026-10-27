@@ -21,12 +21,15 @@ class SecurityOrchestrator:
         model=None,
         memory_agent=None,
         explainer=None,
+        retriever=None,
     ):
         # Preserve the existing trained-model loading behavior.
         self.model = model if model is not None else load_model()
 
         self.detection_agent = DetectionAgent()
-        self.threat_agent = ThreatIntelligenceAgent()
+        self.threat_agent = ThreatIntelligenceAgent(
+            retriever=retriever,
+        )
         self.risk_agent = RiskAssessmentAgent()
         self.memory_agent = memory_agent or MemoryAgent()
 

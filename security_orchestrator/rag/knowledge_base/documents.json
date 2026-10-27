@@ -1,0 +1,24 @@
+
+[
+  {
+    "id": "nist-800-61-r3",
+    "title": "NIST SP 800-61 Rev. 3: Incident Response",
+    "source": "NIST Computer Security Resource Center",
+    "source_url": "https://csrc.nist.gov/pubs/sp/800/61/r3/final",
+    "content": "NIST SP 800-61 Rev. 3 provides recommendations for integrating cybersecurity incident response throughout cybersecurity risk management, aligned with the NIST Cybersecurity Framework 2.0. It aims to help organizations prepare for incidents and improve detection, response, and recovery. Use this guidance to inform incident handling and response planning."
+  },
+  {
+    "id": "mitre-attack-overview",
+    "title": "MITRE ATT&CK: Adversary Behavior Knowledge Base",
+    "source": "MITRE ATT&CK",
+    "source_url": "https://attack.mitre.org/resources/",
+    "content": "MITRE ATT&CK is a knowledge base of adversary techniques based on real-world observations. Tactics describe why an adversary performs an action, while techniques describe how an adversary achieves a tactical goal. Use ATT&CK to structure threat intelligence and investigate behavior when supported by observed evidence. A binary attack classification alone does not establish a specific ATT&CK technique."
+  },
+  {
+    "id": "mitre-attack-usage",
+    "title": "MITRE ATT&CK: Responsible Interpretation",
+    "source": "MITRE ATT&CK",
+    "source_url": "https://attack.mitre.org/resources/",
+    "content": "MITRE ATT&CK advises against treating identification of a single technique as a complete assessment of an adversary. Analysts should consider relevant organizational context and additional intelligence sources. In an intrusion investigation, treat ATT&CK mappings as hypotheses until supported by relevant behavioral or other evidence."
+  }
+]

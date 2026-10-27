@@ -3,10 +3,12 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+
 import torch
 
 from security_orchestrator.orchestrator import SecurityOrchestrator
 from security_orchestrator.agents.memory_agent import MemoryAgent
+from security_orchestrator.rag.retriever import build_local_retriever
 
 
 class TestSecurityOrchestrator(unittest.TestCase):
@@ -98,7 +100,9 @@ class TestSecurityOrchestrator(unittest.TestCase):
         self.assertEqual(report["report_status"], "preliminary")
         self.assertTrue(report["report_id"])
         self.assertTrue(report["recommendations"])
-        self.assertEqual(result["memory_record"]["prediction"], "Attack")
+        self.assertEqual(
+            result["memory_record"]["prediction"], "Attack"
+        )
 
     @patch("security_orchestrator.orchestrator.predict")
     def test_normal_generates_report(self, mock_predict):
@@ -121,7 +125,10 @@ class TestSecurityOrchestrator(unittest.TestCase):
         self.assertEqual(report["report_status"], "preliminary")
         self.assertTrue(report["report_id"])
         self.assertTrue(report["recommendations"])
-        self.assertEqual(result["memory_record"]["prediction"], "Normal")
+        self.assertEqual(
+            result["memory_record"]["prediction"], "Normal"
+        )
+
     @patch("security_orchestrator.orchestrator.predict")
     def test_xai_explanation_is_included_in_report(self, mock_predict):
         mock_predict.return_value = (
@@ -210,6 +217,158 @@ class TestSecurityOrchestrator(unittest.TestCase):
             top_k=10,
         )
 
+    @patch("security_orchestrator.orchestrator.predict")
+    def test_rag_evidence_flows_through_orchestrator(self, mock_predict):
+        mock_predict.return_value = (
+            torch.tensor([1]),
+            torch.tensor([0.91]),
+            torch.tensor([[0.09, 0.91]]),
+        )
+
+        fake_evidence = {
+            "document_id": "nist-800-61-r3",
+            "title": "NIST SP 800-61 Rev. 3: Incident Response",
+            "source": "NIST Computer Security Resource Center",
+            "source_url": (
+                "https://csrc.nist.gov/pubs/sp/800/61/r3/final"
+            ),
+            "content": "Incident response guidance.",
+            "matched_terms": ["incident", "response"],
+            "retrieval_score": 0.75,
+            "evidence_type": "retrieved_reference",
+        }
+
+        fake_retriever = Mock()
+        fake_retriever.retrieve.return_value = [
+            {
+                "document_id": "nist-800-61-r3",
+                "title": "NIST SP 800-61 Rev. 3: Incident Response",
+                "source": "NIST Computer Security Resource Center",
+                "source_url": (
+                    "https://csrc.nist.gov/pubs/sp/800/61/r3/final"
+                ),
+                "content": "Incident response guidance.",
+                "matched_terms": ["incident", "response"],
+                "score": 0.75,
+            }
+        ]
+
+        orchestrator = SecurityOrchestrator(
+            model=object(),
+            memory_agent=self.orchestrator.memory_agent,
+            retriever=fake_retriever,
+        )
+
+        result = orchestrator.analyze(
+            [0.0] * 147,
+            traffic_features={
+                "investigation_context": (
+                    "incident response cybersecurity risk management"
+                )
+            },
+        )
+
+        self.assertTrue(
+            result["threat_analysis"]["retrieval_performed"]
+        )
+        self.assertEqual(
+            result["threat_analysis"]["sources"][0]["document_id"],
+            fake_evidence["document_id"],
+        )
+        self.assertEqual(
+            result["threat_analysis"]["sources"][0]["source_url"],
+            fake_evidence["source_url"],
+        )
+        fake_retriever.retrieve.assert_called_once()
+
+    @patch("security_orchestrator.orchestrator.predict")
+    def test_rag_evidence_is_included_in_final_report(self, mock_predict):
+        mock_predict.return_value = (
+            torch.tensor([1]),
+            torch.tensor([0.91]),
+            torch.tensor([[0.09, 0.91]]),
+        )
+
+        fake_retriever = Mock()
+        fake_retriever.retrieve.return_value = [
+            {
+                "document_id": "nist-800-61-r3",
+                "title": "NIST SP 800-61 Rev. 3: Incident Response",
+                "source": "NIST Computer Security Resource Center",
+                "source_url": (
+                    "https://csrc.nist.gov/pubs/sp/800/61/r3/final"
+                ),
+                "content": "Incident response guidance.",
+                "matched_terms": ["incident", "response"],
+                "score": 0.75,
+            }
+        ]
+
+        orchestrator = SecurityOrchestrator(
+            model=object(),
+            memory_agent=self.orchestrator.memory_agent,
+            retriever=fake_retriever,
+        )
+
+        result = orchestrator.analyze(
+            [0.0] * 147,
+            traffic_features={
+                "investigation_context": (
+                    "incident response cybersecurity risk management"
+                )
+            },
+        )
+
+        report_threat = result["report"]["threat_analysis"]
+
+        self.assertTrue(report_threat["retrieval_performed"])
+        self.assertEqual(len(report_threat["sources"]), 1)
+        self.assertEqual(
+            report_threat["sources"][0]["document_id"],
+            "nist-800-61-r3",
+        )
+        self.assertEqual(
+            report_threat["sources"][0]["source_url"],
+            "https://csrc.nist.gov/pubs/sp/800/61/r3/final",
+        )
+        fake_retriever.retrieve.assert_called_once()
+
+    @patch("security_orchestrator.orchestrator.predict")
+    def test_real_local_rag_reaches_final_report(self, mock_predict):
+        mock_predict.return_value = (
+            torch.tensor([1]),
+            torch.tensor([0.91]),
+            torch.tensor([[0.09, 0.91]]),
+        )
+
+        retriever = build_local_retriever()
+
+        orchestrator = SecurityOrchestrator(
+            model=object(),
+            memory_agent=self.orchestrator.memory_agent,
+            retriever=retriever,
+        )
+
+        result = orchestrator.analyze(
+            [0.0] * 147,
+            traffic_features={
+                "investigation_context": (
+                    "incident response cybersecurity risk management"
+                )
+            },
+        )
+
+        report_threat = result["report"]["threat_analysis"]
+
+        self.assertTrue(report_threat["retrieval_performed"])
+        self.assertGreater(len(report_threat["sources"]), 0)
+        self.assertEqual(
+            report_threat["sources"][0]["document_id"],
+            "nist-800-61-r3",
+        )
+        self.assertTrue(
+            report_threat["sources"][0]["source_url"].startswith("https://")
+        )
 
 
 if __name__ == "__main__":

@@ -49,3 +49,4 @@ outputs/figures/
 # VS Code
 # ==============================
 .vscode/
+data/incident_memory.jsonl

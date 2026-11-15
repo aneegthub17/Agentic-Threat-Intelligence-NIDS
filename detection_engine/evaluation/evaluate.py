@@ -1,8 +1,11 @@
+
 import os
 import sys
 
 import torch
 import torch.nn as nn
+import numpy as np
+
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -12,7 +15,10 @@ from sklearn.metrics import (
     classification_report
 )
 
-# Allow importing project modules
+# ============================================================
+# PROJECT PATH
+# ============================================================
+
 PROJECT_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..")
 )
@@ -99,13 +105,12 @@ checkpoint = torch.load(
     map_location=DEVICE
 )
 
-# Support both a raw state_dict and a checkpoint dictionary.
 if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
     model.load_state_dict(checkpoint["model_state_dict"])
 else:
     model.load_state_dict(checkpoint)
 
-print("✓ Model checkpoint loaded successfully.")
+print("Model checkpoint loaded successfully.")
 
 
 # ============================================================
@@ -116,8 +121,10 @@ model.eval()
 
 all_targets = []
 all_predictions = []
+all_attack_probs = []
 
 total_loss = 0.0
+
 criterion = nn.CrossEntropyLoss()
 
 print("\nRunning evaluation...")
@@ -133,6 +140,13 @@ with torch.no_grad():
 
         loss = criterion(outputs, targets)
 
+        # Probability of the Attack class (class 1)
+        attack_probs = torch.softmax(
+            outputs,
+            dim=1
+        )[:, 1]
+
+        # Default prediction using argmax
         predictions = torch.argmax(
             outputs,
             dim=1
@@ -147,6 +161,16 @@ with torch.no_grad():
         all_predictions.extend(
             predictions.cpu().numpy()
         )
+
+        all_attack_probs.extend(
+            attack_probs.cpu().numpy()
+        )
+
+
+# Convert collected results to NumPy arrays
+all_targets = np.asarray(all_targets)
+all_predictions = np.asarray(all_predictions)
+all_attack_probs = np.asarray(all_attack_probs)
 
 
 # ============================================================
@@ -202,8 +226,11 @@ print(f"Test F1        : {f1:.4f}")
 
 cm = confusion_matrix(
     all_targets,
-    all_predictions
+    all_predictions,
+    labels=[0, 1]
 )
+
+tn, fp, fn, tp = cm.ravel()
 
 print("\n" + "-" * 70)
 print("CONFUSION MATRIX")
@@ -211,12 +238,27 @@ print("-" * 70)
 
 print("\n                 Predicted")
 print("              Normal  Attack")
+
 print(
-    f"Actual Normal  {cm[0][0]:7d} {cm[0][1]:7d}"
+    f"Actual Normal  {tn:7d} {fp:7d}"
 )
+
 print(
-    f"Actual Attack  {cm[1][0]:7d} {cm[1][1]:7d}"
+    f"Actual Attack  {fn:7d} {tp:7d}"
 )
+
+# False Positive Rate
+fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+
+# False Negative Rate
+fnr = fn / (fn + tp) if (fn + tp) > 0 else 0.0
+
+# Specificity
+specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+
+print(f"\nFalse Positive Rate : {fpr:.4f}")
+print(f"False Negative Rate : {fnr:.4f}")
+print(f"Specificity         : {specificity:.4f}")
 
 
 # ============================================================
@@ -231,6 +273,7 @@ print(
     classification_report(
         all_targets,
         all_predictions,
+        labels=[0, 1],
         target_names=["Normal", "Attack"],
         digits=4,
         zero_division=0
@@ -239,9 +282,94 @@ print(
 
 
 # ============================================================
+# ATTACK THRESHOLD ANALYSIS
+# ============================================================
+
+print("\n" + "=" * 70)
+print("ATTACK THRESHOLD ANALYSIS")
+print("=" * 70)
+
+print(
+    f"\n{'Threshold':>10} "
+    f"{'Accuracy':>10} "
+    f"{'Precision':>10} "
+    f"{'Recall':>10} "
+    f"{'F1':>10} "
+    f"{'FPR':>10} "
+    f"{'FNR':>10}"
+)
+
+thresholds = [
+    0.30,
+    0.40,
+    0.50,
+    0.60,
+    0.70,
+    0.80
+]
+
+for threshold in thresholds:
+
+    threshold_predictions = (
+        all_attack_probs >= threshold
+    ).astype(int)
+
+    threshold_cm = confusion_matrix(
+        all_targets,
+        threshold_predictions,
+        labels=[0, 1]
+    )
+
+    tn_t, fp_t, fn_t, tp_t = threshold_cm.ravel()
+
+    threshold_accuracy = accuracy_score(
+        all_targets,
+        threshold_predictions
+    )
+
+    threshold_precision = precision_score(
+        all_targets,
+        threshold_predictions,
+        zero_division=0
+    )
+
+    threshold_recall = recall_score(
+        all_targets,
+        threshold_predictions,
+        zero_division=0
+    )
+
+    threshold_f1 = f1_score(
+        all_targets,
+        threshold_predictions,
+        zero_division=0
+    )
+
+    threshold_fpr = (
+        fp_t / (fp_t + tn_t)
+        if (fp_t + tn_t) > 0 else 0.0
+    )
+
+    threshold_fnr = (
+        fn_t / (fn_t + tp_t)
+        if (fn_t + tp_t) > 0 else 0.0
+    )
+
+    print(
+        f"{threshold:10.2f} "
+        f"{threshold_accuracy:10.4f} "
+        f"{threshold_precision:10.4f} "
+        f"{threshold_recall:10.4f} "
+        f"{threshold_f1:10.4f} "
+        f"{threshold_fpr:10.4f} "
+        f"{threshold_fnr:10.4f}"
+    )
+
+
+# ============================================================
 # COMPLETION
 # ============================================================
 
-print("=" * 70)
+print("\n" + "=" * 70)
 print("TRANSFORMER EVALUATION COMPLETED")
 print("=" * 70)

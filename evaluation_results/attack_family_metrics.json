@@ -1,0 +1,58 @@
+{
+    "total_samples": 175341,
+    "actual_dos_samples": 12264,
+    "model_predicted_attack_samples": 128353,
+    "possible_dos_hypotheses": 0,
+    "all_samples_pipeline_metrics": {
+        "true_positive": 0,
+        "true_negative": 163077,
+        "false_positive": 0,
+        "false_negative": 12264,
+        "accuracy": 0.9300562903143018,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "false_positive_rate": 0.0
+    },
+    "predicted_attack_subset_metrics": {
+        "true_positive": 0,
+        "true_negative": 116678,
+        "false_positive": 0,
+        "false_negative": 11675,
+        "accuracy": 0.9090399133639261,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "false_positive_rate": 0.0
+    },
+    "family_counts": {
+        "Not applicable": 46988,
+        "Undetermined": 128353
+    },
+    "traffic_pattern_counts": {
+        "high_byte_rate": 82645,
+        "asymmetric_packet_flow": 381
+    },
+    "actual_category_counts": {
+        "Normal": 56000,
+        "Backdoor": 1746,
+        "Analysis": 2000,
+        "Fuzzers": 18184,
+        "Shellcode": 1133,
+        "Reconnaissance": 10491,
+        "Exploits": 33393,
+        "DoS": 12264,
+        "Worms": 130,
+        "Generic": 40000
+    },
+    "missing_numeric_measurements": 10628,
+    "evaluation_seconds": 25.304243999999017,
+    "methodology": "Binary Transformer prediction followed by unvalidated numerical flow heuristics. Ground-truth attack_category was used only after predictions for evaluation.",
+    "limitations": [
+        "Single-flow heuristics do not confirm DoS.",
+        "Screening thresholds are not calibrated.",
+        "Duration units require verification.",
+        "Binary model false negatives prevent downstream family hypotheses.",
+        "Row alignment relies on preprocessing preserving the original sample order."
+    ]
+}

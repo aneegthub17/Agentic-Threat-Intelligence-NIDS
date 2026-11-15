@@ -50,3 +50,23 @@ outputs/figures/
 # ==============================
 .vscode/
 data/incident_memory.jsonl
+
+# ==============================
+# Additional Virtual Environments
+# ==============================
+.venv-cpu/
+
+# ==============================
+# Runtime Incident Memory
+# ==============================
+data/*.jsonl
+
+# ==============================
+# Generated Evaluation Predictions
+# ==============================
+evaluation_results/*predictions.csv
+
+# ==============================
+# Local Test / Tool Cache
+# ==============================
+.pytest_cache/

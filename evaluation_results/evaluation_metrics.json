@@ -1,0 +1,32 @@
+{
+    "total_samples": 175341,
+    "accuracy": 0.8745986392229997,
+    "precision": 0.8792392854082102,
+    "recall": 0.9456347776539497,
+    "specificity": 0.7232142857142857,
+    "f1_score": 0.9112291779372935,
+    "false_positive_rate": 0.2767857142857143,
+    "false_negative_rate": 0.054365222346050394,
+    "true_positive": 112853,
+    "true_negative": 40500,
+    "false_positive": 15500,
+    "false_negative": 6488,
+    "execution_device": "cuda:0",
+    "evaluation_seconds": 13.876371100006509,
+    "samples_per_second": 12635.940530584236,
+    "positive_class": "Attack",
+    "confusion_matrix": [
+        [
+            40500,
+            15500
+        ],
+        [
+            6488,
+            112853
+        ]
+    ],
+    "confusion_matrix_labels": [
+        "Normal",
+        "Attack"
+    ]
+}

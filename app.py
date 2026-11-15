@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import torch
-from streamlit_autorefresh import st_autorefresh
 
 from security_orchestrator.orchestrator import SecurityOrchestrator
 from security_orchestrator.agents.memory_agent import MemoryAgent
@@ -19,9 +18,17 @@ from security_orchestrator.rag.retriever import build_local_retriever
 
 ROOT = Path(__file__).resolve().parent
 
-DATA_PATH = ROOT / "datasets" / "processed" / "test_processed.csv"
-METADATA_PATH = ROOT / "datasets" / "merged" / "unified_test.csv"
-MEMORY_PATH = ROOT / "data" / "dashboard_demo_memory.jsonl"
+DATA_PATH = (
+    ROOT / "datasets" / "processed" / "test_processed.csv"
+)
+
+METADATA_PATH = (
+    ROOT / "datasets" / "merged" / "unified_test.csv"
+)
+
+MEMORY_PATH = (
+    ROOT / "data" / "dashboard_demo_memory.jsonl"
+)
 
 EXPECTED_FEATURES = 147
 REPLAY_SIZE = 1000
@@ -51,17 +58,17 @@ GROUND_TRUTH_COLUMNS = [
     "attack_category",
 ]
 
+
+# ============================================================
+# 2. STREAMLIT PAGE CONFIGURATION
+# ============================================================
+
 st.set_page_config(
     page_title="Agentic Threat Intelligence NIDS",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-
-# ============================================================
-# 2. STYLING
-# ============================================================
 
 st.markdown(
     """
@@ -88,7 +95,9 @@ st.markdown(
     }
 
     .hero {
-        background: linear-gradient(120deg, #14243b, #182c46);
+        background: linear-gradient(
+            120deg, #14243b, #182c46
+        );
         border: 1px solid #2b4564;
         border-radius: 16px;
         padding: 24px;
@@ -107,6 +116,7 @@ st.markdown(
         </h1>
         <p style="color:#cbd5e1;margin-top:10px">
             Transformer Detection · Explainable AI ·
+            Validated Attack-Family Classification ·
             Threat Intelligence Retrieval · Risk Assessment
         </p>
     </div>
@@ -115,13 +125,13 @@ st.markdown(
 )
 
 st.caption(
-    "Research demonstration using recorded network-flow datasets. "
-    "This is not live packet capture."
+    "Research demonstration using recorded network-flow "
+    "datasets. This is not live packet capture."
 )
 
 
 # ============================================================
-# 3. DATA LOADING AND VALIDATION
+# 3. DATA LOADING
 # ============================================================
 
 @st.cache_data(
@@ -143,7 +153,8 @@ def load_data(processed_path, metadata_path):
 
     if len(processed) != len(raw):
         raise ValueError(
-            "Processed and raw datasets have different row counts."
+            "Processed and raw datasets have "
+            "different row counts."
         )
 
     processed_targets = pd.to_numeric(
@@ -161,7 +172,8 @@ def load_data(processed_path, metadata_path):
         raw_targets,
     ):
         raise ValueError(
-            "Processed and raw target ordering does not match."
+            "Processed and raw target ordering "
+            "does not match."
         )
 
     if raw[
@@ -170,12 +182,6 @@ def load_data(processed_path, metadata_path):
         raise ValueError(
             "Ground-truth metadata contains missing values."
         )
-
-    # Matching target sequences is a partial alignment check.
-    # This assumes preprocessing preserved original row order.
-    #
-    # Raw features are investigation-only.
-    # They must never be included in the 147 model features.
 
     invalid_counts = {}
 
@@ -188,11 +194,7 @@ def load_data(processed_path, metadata_path):
                 .fillna("unknown")
                 .astype(str)
                 .str.strip()
-            )
-
-            values = values.replace(
-                "",
-                "unknown",
+                .replace("", "unknown")
             )
 
         else:
@@ -200,10 +202,7 @@ def load_data(processed_path, metadata_path):
             values = pd.to_numeric(
                 raw[column],
                 errors="coerce",
-            )
-
-            # Convert infinite measurements to missing.
-            values = values.replace(
+            ).replace(
                 [np.inf, -np.inf],
                 np.nan,
             )
@@ -212,12 +211,9 @@ def load_data(processed_path, metadata_path):
                 values.isna().sum()
             )
 
-            # Preserve missingness rather than inventing zero.
-            # Missing values become None during extraction.
-
-        processed[f"raw_{column}"] = (
-            values.to_numpy()
-        )
+        processed[
+            f"raw_{column}"
+        ] = values.to_numpy()
 
     processed["dataset_source"] = (
         raw["dataset_source"]
@@ -264,11 +260,15 @@ def load_data(processed_path, metadata_path):
             "missing or infinite values."
         )
 
-    return processed, feature_columns, invalid_counts
+    return (
+        processed,
+        feature_columns,
+        invalid_counts,
+    )
 
 
 # ============================================================
-# 4. INITIALIZE SECURITY ORCHESTRATOR
+# 4. INITIALIZE ORCHESTRATOR
 # ============================================================
 
 @st.cache_resource(
@@ -313,75 +313,7 @@ except Exception as exc:
 
 
 # ============================================================
-# 5. DEVICE STATUS
-# ============================================================
-
-st.sidebar.title("⚙️ Demo Controls")
-
-st.sidebar.caption(
-    f"PyTorch version: {torch.__version__}"
-)
-
-if torch.cuda.is_available():
-
-    st.sidebar.success(
-        f"CUDA available: {torch.cuda.get_device_name(0)}"
-    )
-
-else:
-
-    st.sidebar.warning(
-        "CUDA unavailable; CPU fallback expected."
-    )
-
-st.sidebar.caption(
-    "CUDA availability does not independently confirm "
-    "the loaded model's device."
-)
-
-
-# ============================================================
-# 6. RAW DATA QUALITY
-# ============================================================
-
-total_invalid = sum(
-    invalid_counts.values()
-)
-
-with st.sidebar.expander(
-    "Raw traffic data quality"
-):
-
-    st.write(
-        f"Unavailable numeric measurements: "
-        f"{total_invalid:,}"
-    )
-
-    affected = {
-        column: count
-        for column, count in invalid_counts.items()
-        if count > 0
-    }
-
-    if affected:
-
-        st.json(affected)
-
-    else:
-
-        st.success(
-            "No missing numeric raw measurements."
-        )
-
-    st.caption(
-        "Unavailable raw measurements are excluded "
-        "from numerical interpretation, not replaced "
-        "with invented traffic values."
-    )
-
-
-# ============================================================
-# 7. SESSION STATE
+# 5. SESSION STATE
 # ============================================================
 
 if "replay" not in st.session_state:
@@ -408,8 +340,64 @@ if "latest_metadata" not in st.session_state:
 
 
 # ============================================================
-# 8. SIDEBAR CONTROLS
+# 6. SIDEBAR CONTROLS
 # ============================================================
+
+st.sidebar.title("⚙️ Demo Controls")
+
+st.sidebar.caption(
+    f"PyTorch version: {torch.__version__}"
+)
+
+if torch.cuda.is_available():
+
+    st.sidebar.success(
+        "CUDA available: "
+        f"{torch.cuda.get_device_name(0)}"
+    )
+
+else:
+
+    st.sidebar.warning(
+        "CUDA unavailable; CPU fallback expected."
+    )
+
+st.sidebar.caption(
+    "CUDA availability does not independently confirm "
+    "the loaded model's device."
+)
+
+with st.sidebar.expander(
+    "Raw traffic data quality"
+):
+
+    total_invalid = sum(
+        invalid_counts.values()
+    )
+
+    st.write(
+        "Unavailable numeric measurements: "
+        f"{total_invalid:,}"
+    )
+
+    affected = {
+        key: value
+        for key, value in invalid_counts.items()
+        if value > 0
+    }
+
+    if affected:
+        st.json(affected)
+    else:
+        st.success(
+            "No missing numeric raw measurements."
+        )
+
+    st.caption(
+        "Missing raw measurements are excluded "
+        "from numerical interpretation, "
+        "not replaced with zero."
+    )
 
 batch_size = st.sidebar.select_slider(
     "Samples per batch",
@@ -419,10 +407,10 @@ batch_size = st.sidebar.select_slider(
 
 delay = st.sidebar.slider(
     "Replay interval (seconds)",
-    min_value=0.0,
-    max_value=1.5,
-    value=0.5,
-    step=0.1,
+    min_value=1.0,
+    max_value=5.0,
+    value=2.0,
+    step=0.5,
 )
 
 analyst_context = st.sidebar.text_area(
@@ -435,8 +423,9 @@ analyst_context = st.sidebar.text_area(
 )
 
 st.sidebar.caption(
-    "Raw network-flow measurements are automatically "
-    "extracted. Analyst context is optional."
+    "Raw network-flow measurements are "
+    "automatically extracted. "
+    "Analyst context is optional."
 )
 
 remaining = (
@@ -444,9 +433,8 @@ remaining = (
     - st.session_state.position
 )
 
-st.sidebar.metric(
-    "Replay samples remaining",
-    remaining,
+st.sidebar.caption(
+    "Live replay progress appears in Traffic Replay."
 )
 
 st.sidebar.divider()
@@ -458,7 +446,6 @@ if not st.session_state.auto_replay:
         use_container_width=True,
         disabled=remaining <= 0,
     ):
-
         st.session_state.auto_replay = True
         st.rerun()
 
@@ -468,14 +455,12 @@ else:
         "⏸ Pause Auto Replay",
         use_container_width=True,
     ):
-
         st.session_state.auto_replay = False
         st.rerun()
 
     st.sidebar.success(
         "Automatic replay is running"
     )
-
 
 if st.sidebar.button(
     "↻ Reset replay session",
@@ -491,7 +476,6 @@ if st.sidebar.button(
 
     st.rerun()
 
-
 if st.sidebar.button(
     "Clear dashboard session history",
     use_container_width=True,
@@ -504,74 +488,31 @@ if st.sidebar.button(
 
     st.rerun()
 
-
 st.sidebar.caption(
-    "Incident memory: data/dashboard_demo_memory.jsonl"
+    "Incident memory: "
+    "data/dashboard_demo_memory.jsonl"
 )
 
 
 # ============================================================
-# 9. AUTO REFRESH
-# ============================================================
-
-if st.session_state.auto_replay:
-
-    st_autorefresh(
-        interval=max(
-            500,
-            int(delay * 1000),
-        ),
-        limit=None,
-        key="nids_auto_replay_refresh",
-    )
-
-
-# ============================================================
-# 10. TRAFFIC REPLAY
-# ============================================================
-
-st.subheader("▶ Traffic Replay")
-
-left, right = st.columns([1, 2])
-
-with left:
-
-    run_batch = st.button(
-        "▶ Process next batch",
-        type="primary",
-        use_container_width=True,
-        disabled=(
-            remaining <= 0
-            or st.session_state.auto_replay
-        ),
-    )
-
-with right:
-
-    st.caption(
-        f"Replay position: "
-        f"{st.session_state.position} / "
-        f"{len(st.session_state.replay)}"
-    )
-
-
-# ============================================================
-# 11. EXTRACT ORIGINAL NETWORK FLOW
+# 7. RAW FLOW EXTRACTION
 # ============================================================
 
 def extract_raw_flow(row):
     """
-    Extract raw traffic measurements for investigation.
+    Extract original network measurements.
 
-    Never pass target, attack_category, dataset_source,
-    or other ground-truth labels to the agents.
+    Never pass target, dataset_source, or
+    attack_category to inference agents.
     """
 
     context = {}
 
     for column in RAW_FLOW_COLUMNS:
 
-        value = row[f"raw_{column}"]
+        value = row[
+            f"raw_{column}"
+        ]
 
         if column == "protocol":
 
@@ -579,81 +520,80 @@ def extract_raw_flow(row):
 
         elif pd.isna(value):
 
-            # Missing/invalid measurement.
-            # Do not pretend it is zero.
             context[column] = None
 
         else:
 
             numeric_value = float(value)
 
-            if np.isfinite(numeric_value):
-                context[column] = numeric_value
-            else:
-                context[column] = None
+            context[column] = (
+                numeric_value
+                if np.isfinite(numeric_value)
+                else None
+            )
 
     return context
 
 
 # ============================================================
-# 12. PROCESS TRAFFIC
+# 8. PROCESS TRAFFIC BATCH
 # ============================================================
 
-should_process = (
-    run_batch
-    or st.session_state.auto_replay
-)
+def process_traffic_batch(
+    count,
+    context_text,
+):
+    """
+    Process traffic and update session state.
 
-if should_process and remaining > 0:
+    The Streamlit fragment controls automatic
+    refresh without rerunning the entire page.
+    """
 
-    count = min(
-        batch_size,
-        remaining,
-    )
+    processed_count = 0
 
     progress = st.progress(
         0,
         text="Starting traffic analysis...",
     )
 
-    processed_count = 0
-
     for i in range(count):
 
         idx = st.session_state.position
 
-        row = st.session_state.replay.iloc[idx]
-
-        # Transformer receives ONLY 147 processed features.
-        features = row[feature_cols].to_numpy(
-            dtype=np.float32
-        )
-
-        # Investigation receives raw flow measurements.
-        traffic_context = extract_raw_flow(row)
-
-        if analyst_context.strip():
-
-            traffic_context["investigation_context"] = (
-                analyst_context.strip()
-            )
-
-        # Ground truth remains evaluation-only.
-        actual_label = (
-            "Attack"
-            if int(row["target"]) == 1
-            else "Normal"
-        )
-
-        actual_category = str(
-            row["attack_category"]
-        )
-
-        dataset_source = str(
-            row["dataset_source"]
+        row = (
+            st.session_state.replay.iloc[idx]
         )
 
         try:
+
+            features = row[
+                feature_cols
+            ].to_numpy(dtype=np.float32)
+
+            traffic_context = extract_raw_flow(
+                row
+            )
+
+            if context_text.strip():
+
+                traffic_context[
+                    "investigation_context"
+                ] = context_text.strip()
+
+            actual_label = (
+                "Attack"
+                if int(row["target"]) == 1
+                else "Normal"
+            )
+
+            actual_category = str(
+                row["attack_category"]
+            )
+
+            dataset_source = str(
+                row["dataset_source"]
+            )
 
             result = orchestrator.analyze(
                 features,
@@ -678,11 +618,13 @@ if should_process and remaining > 0:
             )
 
             prediction = detection.get(
-                "prediction", "Unknown"
+                "prediction",
+                "Unknown",
             )
 
             family_analysis = threat.get(
-                "attack_family_analysis", {}
+                "attack_family_analysis",
+                {},
             )
 
             event = {
@@ -701,7 +643,8 @@ if should_process and remaining > 0:
                 ),
                 "agent_attack_family": (
                     family_analysis.get(
-                        "family", "Undetermined"
+                        "family",
+                        "Attack type under investigation",
                     )
                 ),
                 "correct": (
@@ -713,10 +656,12 @@ if should_process and remaining > 0:
                     )
                 ),
                 "risk_level": risk.get(
-                    "risk_level", "UNKNOWN"
+                    "risk_level",
+                    "UNKNOWN",
                 ),
                 "xai_status": result.get(
-                    "xai_status", "unknown"
+                    "xai_status",
+                    "unknown",
                 ),
                 "retrieved_sources": len(
                     threat.get("sources", [])
@@ -737,6 +682,7 @@ if should_process and remaining > 0:
             }
 
             st.session_state.position += 1
+
             st.session_state.error = None
 
             processed_count += 1
@@ -749,6 +695,7 @@ if should_process and remaining > 0:
             )
 
             st.session_state.auto_replay = False
+
             break
 
         progress.progress(
@@ -761,15 +708,93 @@ if should_process and remaining > 0:
 
     progress.empty()
 
-    if processed_count:
+    if (
+        st.session_state.position
+        >= len(st.session_state.replay)
+    ):
+        st.session_state.auto_replay = False
 
-        st.success(
-            f"Successfully processed "
-            f"{processed_count} traffic sample(s)."
+    return processed_count
+
+
+# ============================================================
+# 9. DASHBOARD
+# ============================================================
+
+@st.fragment(
+    run_every=(
+        f"{delay}s"
+        if st.session_state.auto_replay
+        else None
+    )
+)
+def render_replay_dashboard():
+
+    remaining = (
+        len(st.session_state.replay)
+        - st.session_state.position
+    )
+
+    # --------------------------------------------------------
+    # TRAFFIC REPLAY
+    # --------------------------------------------------------
+
+    st.subheader("▶ Traffic Replay")
+
+    if st.session_state.auto_replay:
+
+        st.caption(
+            "Auto Replay running — results update "
+            "after each completed batch."
         )
 
-    if st.session_state.error:
+    left, right = st.columns([1, 2])
 
+    with left:
+
+        run_batch = st.button(
+            "▶ Process next batch",
+            type="primary",
+            use_container_width=True,
+            disabled=(
+                remaining <= 0
+                or st.session_state.auto_replay
+            ),
+        )
+
+    with right:
+
+        st.caption(
+            f"Replay position: "
+            f"{st.session_state.position} / "
+            f"{len(st.session_state.replay)}"
+        )
+
+    should_process = (
+        run_batch
+        or st.session_state.auto_replay
+    )
+
+    if should_process and remaining > 0:
+
+        count = min(
+            batch_size,
+            remaining,
+        )
+
+        processed_count = process_traffic_batch(
+            count,
+            analyst_context,
+        )
+
+        if processed_count:
+
+            st.success(
+                "Successfully processed "
+                f"{processed_count} traffic sample(s)."
+            )
+
+    if st.session_state.error:
         st.error(
             st.session_state.error
         )
@@ -779,626 +804,846 @@ if should_process and remaining > 0:
         >= len(st.session_state.replay)
     ):
 
-        st.session_state.auto_replay = False
-
         st.info(
             "Replay completed. Reset the session "
             "to start again."
         )
 
+    # --------------------------------------------------------
+    # MONITORING OVERVIEW
+    # --------------------------------------------------------
 
-# ============================================================
-# 13. MONITORING OVERVIEW
-# ============================================================
+    st.divider()
 
-st.divider()
-st.subheader("📊 Monitoring Overview")
+    st.subheader(
+        "📊 Monitoring Overview"
+    )
 
-events = st.session_state.events
-total = len(events)
+    st.metric(
+        "Replay samples remaining",
+        len(st.session_state.replay)
+        - st.session_state.position,
+    )
 
-attack_count = sum(
-    event["prediction"] == "Attack"
-    for event in events
-)
+    st.caption(
+        f"Replay progress: "
+        f"{st.session_state.position} / "
+        f"{len(st.session_state.replay)} processed"
+    )
 
-normal_count = sum(
-    event["prediction"] == "Normal"
-    for event in events
-)
+    events = st.session_state.events
 
-high_count = sum(
-    event["risk_level"] == "HIGH"
-    for event in events
-)
+    total = len(events)
 
-agreement = (
-    100 * sum(
-        event["correct"]
+    attack_count = sum(
+        event["prediction"] == "Attack"
         for event in events
-    ) / total
-    if total
-    else 0
-)
+    )
 
-m1, m2, m3, m4, m5 = st.columns(5)
+    normal_count = sum(
+        event["prediction"] == "Normal"
+        for event in events
+    )
 
-m1.metric(
-    "Samples analysed",
-    total,
-)
+    high_count = sum(
+        event["risk_level"] == "HIGH"
+        for event in events
+    )
 
-m2.metric(
-    "Attack predictions",
-    attack_count,
-)
+    agreement = (
+        100
+        * sum(
+            event["correct"]
+            for event in events
+        )
+        / total
+        if total
+        else 0
+    )
 
-m3.metric(
-    "Normal predictions",
-    normal_count,
-)
+    m1, m2, m3, m4, m5 = st.columns(5)
 
-m4.metric(
-    "High-risk events",
-    high_count,
-)
+    m1.metric(
+        "Samples analysed",
+        total,
+    )
 
-m5.metric(
-    "Replay agreement",
-    f"{agreement:.1f}%" if total else "—",
-)
+    m2.metric(
+        "Attack predictions",
+        attack_count,
+    )
 
+    m3.metric(
+        "Normal predictions",
+        normal_count,
+    )
 
-# ============================================================
-# 14. DETECTION AND RISK DISTRIBUTION
-# ============================================================
+    m4.metric(
+        "High-risk events",
+        high_count,
+    )
 
-if events:
+    m5.metric(
+        "Replay agreement",
+        f"{agreement:.1f}%"
+        if total
+        else "—",
+    )
 
-    history_df = pd.DataFrame(events)
+    # --------------------------------------------------------
+    # DETECTION AND RISK DISTRIBUTION
+    # --------------------------------------------------------
 
-    c1, c2 = st.columns(2)
+    if events:
 
-    with c1:
-
-        st.markdown(
-            "**Detection distribution**"
+        history_df = pd.DataFrame(
+            events
         )
 
-        for label in ["Normal", "Attack"]:
+        c1, c2 = st.columns(2)
 
-            count = int(
-                (
-                    history_df["prediction"]
-                    == label
-                ).sum()
-            )
-
-            st.write(
-                f"{label}: {count} "
-                f"({count / total:.1%})"
-            )
-
-            st.progress(
-                count / total
-            )
-
-    with c2:
-
-        st.markdown(
-            "**Preliminary risk distribution**"
-        )
-
-        for label in ["LOW", "MEDIUM", "HIGH"]:
-
-            count = int(
-                (
-                    history_df["risk_level"]
-                    == label
-                ).sum()
-            )
-
-            st.write(
-                f"{label}: {count} "
-                f"({count / total:.1%})"
-            )
-
-            st.progress(
-                count / total
-            )
-
-    st.caption(
-        "Replay agreement is a session-level metric, "
-        "not a full model evaluation."
-    )
-
-else:
-
-    st.info(
-        "No samples analysed yet. "
-        "Process a batch to begin."
-    )
-
-
-# ============================================================
-# 15. LATEST TRAFFIC ANALYSIS
-# ============================================================
-
-st.divider()
-st.subheader("🔎 Latest Traffic Analysis")
-
-latest = st.session_state.latest
-
-if latest is None:
-
-    st.info(
-        "Detection, XAI, threat intelligence, "
-        "risk assessment and incident reporting "
-        "will appear here."
-    )
-
-else:
-
-    detection = latest.get(
-        "detection", {}
-    )
-
-    threat = latest.get(
-        "threat_analysis", {}
-    )
-
-    risk = latest.get(
-        "risk_assessment", {}
-    )
-
-    prediction = detection.get(
-        "prediction", "Unknown"
-    )
-
-    confidence = float(
-        detection.get(
-            "confidence", 0.0
-        )
-    )
-
-    risk_level = risk.get(
-        "risk_level", "UNKNOWN"
-    )
-
-    st.markdown(
-        "### Transformer Detection"
-    )
-
-    a, b, c = st.columns(3)
-
-    a.metric(
-        "Prediction",
-        prediction,
-    )
-
-    b.metric(
-        "Confidence",
-        f"{confidence * 100:.2f}%",
-    )
-
-    c.metric(
-        "Preliminary risk",
-        risk_level,
-    )
-
-    with st.expander(
-        "Detection details and class probabilities",
-        expanded=True,
-    ):
-
-        st.json(detection)
-
-
-    # ========================================================
-    # DATASET GROUND TRUTH
-    # ========================================================
-
-    st.markdown(
-        "### Dataset Ground Truth"
-    )
-
-    metadata = (
-        st.session_state.latest_metadata
-        or {}
-    )
-
-    a, b, c = st.columns(3)
-
-    a.metric(
-        "Dataset source",
-        metadata.get(
-            "dataset_source", "Unavailable"
-        ),
-    )
-
-    b.metric(
-        "Actual binary label",
-        metadata.get(
-            "actual_label", "Unavailable"
-        ),
-    )
-
-    c.metric(
-        "Original attack category",
-        metadata.get(
-            "attack_category", "Unavailable"
-        ),
-    )
-
-    st.caption(
-        "Ground-truth labels are displayed only "
-        "for evaluation. They are never passed "
-        "to the Transformer or investigation agents."
-    )
-
-
-    # ========================================================
-    # EXPLAINABLE AI
-    # ========================================================
-
-    with st.expander(
-        "🧠 Explainable AI — Gradient × Input",
-        expanded=True,
-    ):
-
-        if latest.get(
-            "xai_status"
-        ) == "completed":
-
-            explanation = latest.get(
-                "xai_explanation", {}
-            )
-
-            top_features = explanation.get(
-                "top_features", []
-            )
-
-            if top_features:
-
-                feature_df = pd.DataFrame(
-                    top_features
-                )
-
-                st.markdown(
-                    "**Top contributing features**"
-                )
-
-                st.markdown(
-                    feature_df.to_html(
-                        index=False,
-                        escape=True,
-                        border=0,
-                    ),
-                    unsafe_allow_html=True,
-                )
-
-                for _, item in feature_df.iterrows():
-
-                    st.write(
-                        f"{item['feature']}: "
-                        f"{item['attribution']:.6f}"
-                    )
-
-            st.caption(
-                explanation.get(
-                    "interpretation_note", ""
-                )
-            )
-
-            st.caption(
-                "Gradient × Input provides local "
-                "feature attributions, not causal explanations."
-            )
-
-        else:
-
-            st.warning(
-                latest.get(
-                    "xai_explanation", {}
-                ).get(
-                    "reason",
-                    "XAI explanation unavailable.",
-                )
-            )
-
-
-    # ========================================================
-    # AUTOMATIC RAW TRAFFIC EVIDENCE
-    # ========================================================
-
-    with st.expander(
-        "📡 Automatically Extracted Network Flow",
-        expanded=True,
-    ):
-
-        raw_flow = metadata.get(
-            "raw_flow", {}
-        )
-
-        if raw_flow:
-
-            st.json(raw_flow)
-
-            unavailable = [
-                key
-                for key, value in raw_flow.items()
-                if value is None
-            ]
-
-            if unavailable:
-
-                st.warning(
-                    "Unavailable measurements: "
-                    + ", ".join(unavailable)
-                )
-
-            st.caption(
-                "These are original, unscaled traffic "
-                "measurements. Missing values are shown "
-                "as null and must not be interpreted as zero."
-            )
-
-        else:
-
-            st.info(
-                "No raw flow measurements available."
-            )
-
-
-    # ========================================================
-    # THREAT INTELLIGENCE AND RAG
-    # ========================================================
-
-    with st.expander(
-        "🔍 Threat Intelligence and RAG Evidence",
-        expanded=True,
-    ):
-
-        st.write(
-            threat.get(
-                "summary",
-                "No threat summary available.",
-            )
-        )
-
-        family_analysis = threat.get(
-            "attack_family_analysis", {}
-        )
-
-        if family_analysis:
+        with c1:
 
             st.markdown(
-                "**Agent attack-family hypothesis**"
+                "**Detection distribution**"
             )
 
-            st.write(
-                family_analysis.get(
-                    "family", "Undetermined"
+            for label in [
+                "Normal",
+                "Attack",
+            ]:
+
+                label_count = int(
+                    (
+                        history_df["prediction"]
+                        == label
+                    ).sum()
                 )
-            )
-
-            st.caption(
-                f"Method: "
-                f"{family_analysis.get('method', 'unknown')} "
-                f"· Certainty: "
-                f"{family_analysis.get('certainty', 'unknown')}"
-            )
-
-            if family_analysis.get("evidence"):
 
                 st.write(
-                    "Supporting investigation evidence:"
+                    f"{label}: {label_count} "
+                    f"({label_count / total:.1%})"
                 )
 
-                st.json(
-                    family_analysis["evidence"]
+                st.progress(
+                    label_count / total
                 )
 
-            st.caption(
-                "This is a heuristic investigation result, "
-                "not a trained multiclass prediction."
+        with c2:
+
+            st.markdown(
+                "**Preliminary risk distribution**"
             )
 
-        sources = threat.get(
-            "sources", []
+            for label in [
+                "LOW",
+                "MEDIUM",
+                "HIGH",
+            ]:
+
+                label_count = int(
+                    (
+                        history_df["risk_level"]
+                        == label
+                    ).sum()
+                )
+
+                st.write(
+                    f"{label}: {label_count} "
+                    f"({label_count / total:.1%})"
+                )
+
+                st.progress(
+                    label_count / total
+                )
+
+        st.caption(
+            "Replay agreement is a session-level "
+            "metric, not a full model evaluation."
         )
 
-        if sources:
+    else:
 
-            st.success(
-                f"{len(sources)} local reference(s) retrieved."
+        st.info(
+            "No samples analysed yet. "
+            "Process a batch to begin."
+        )
+
+    # --------------------------------------------------------
+    # LATEST TRAFFIC ANALYSIS
+    # --------------------------------------------------------
+
+    st.divider()
+
+    st.subheader(
+        "🔎 Latest Traffic Analysis"
+    )
+
+    latest = st.session_state.latest
+
+    if latest is None:
+
+        st.info(
+            "Detection, XAI, threat intelligence, "
+            "risk assessment and incident reporting "
+            "will appear here."
+        )
+
+    else:
+
+        detection = latest.get(
+            "detection",
+            {},
+        )
+
+        threat = latest.get(
+            "threat_analysis",
+            {},
+        )
+
+        risk = latest.get(
+            "risk_assessment",
+            {},
+        )
+
+        prediction = detection.get(
+            "prediction",
+            "Unknown",
+        )
+
+        confidence = float(
+            detection.get(
+                "confidence",
+                0.0,
             )
+        )
 
-            for i, source in enumerate(
-                sources,
-                start=1,
+        risk_level = risk.get(
+            "risk_level",
+            "UNKNOWN",
+        )
+
+        # ----------------------------------------------------
+        # TRANSFORMER DETECTION
+        # ----------------------------------------------------
+
+        st.markdown(
+            "### Transformer Detection"
+        )
+
+        a, b, c = st.columns(3)
+
+        a.metric(
+            "Prediction",
+            prediction,
+        )
+
+        b.metric(
+            "Confidence",
+            f"{confidence * 100:.2f}%",
+        )
+
+        c.metric(
+            "Preliminary risk",
+            risk_level,
+        )
+
+        with st.expander(
+            "Detection details and class probabilities",
+            expanded=True,
+        ):
+
+            st.json(detection)
+
+        # ----------------------------------------------------
+        # DATASET GROUND TRUTH
+        # ----------------------------------------------------
+
+        st.markdown(
+            "### Dataset Ground Truth"
+        )
+
+        metadata = (
+            st.session_state.latest_metadata
+            or {}
+        )
+
+        a, b, c = st.columns(3)
+
+        a.metric(
+            "Dataset source",
+            metadata.get(
+                "dataset_source",
+                "Unavailable",
+            ),
+        )
+
+        b.metric(
+            "Actual binary label",
+            metadata.get(
+                "actual_label",
+                "Unavailable",
+            ),
+        )
+
+        c.metric(
+            "Original attack category",
+            metadata.get(
+                "attack_category",
+                "Unavailable",
+            ),
+        )
+
+        st.caption(
+            "Ground-truth labels are displayed "
+            "only for evaluation. They are never "
+            "passed to the Transformer or "
+            "investigation agents."
+        )
+
+        # ----------------------------------------------------
+        # EXPLAINABLE AI
+        # ----------------------------------------------------
+
+        with st.expander(
+            "🧠 Explainable AI — Gradient × Input",
+            expanded=True,
+        ):
+
+            if (
+                latest.get("xai_status")
+                == "completed"
             ):
 
-                st.markdown(
-                    f"**Reference {i}: "
-                    f"{source.get('title', 'Untitled')}**"
+                explanation = latest.get(
+                    "xai_explanation",
+                    {},
                 )
 
-                st.write(
-                    f"Source: "
-                    f"{source.get('source', 'Unknown')}"
+                top_features = explanation.get(
+                    "top_features",
+                    [],
                 )
 
-                url = source.get(
-                    "source_url",
-                    source.get("url"),
-                )
+                if top_features:
 
-                if url:
+                    feature_df = pd.DataFrame(
+                        top_features
+                    )
 
                     st.markdown(
-                        f"[Open reference]({url})"
+                        "**Top contributing features**"
+                    )
+
+                    st.markdown(
+                        feature_df.to_html(
+                            index=False,
+                            escape=True,
+                            border=0,
+                        ),
+                        unsafe_allow_html=True,
+                    )
+
+                    for _, item in feature_df.iterrows():
+
+                        st.write(
+                            f"{item['feature']}: "
+                            f"{item['attribution']:.6f}"
+                        )
+
+                st.caption(
+                    explanation.get(
+                        "interpretation_note",
+                        "",
+                    )
+                )
+
+                st.caption(
+                    "Gradient × Input provides local "
+                    "feature attributions, not causal "
+                    "explanations."
+                )
+
+            else:
+
+                st.warning(
+                    latest.get(
+                        "xai_explanation",
+                        {},
+                    ).get(
+                        "reason",
+                        "XAI explanation unavailable.",
+                    )
+                )
+
+        # ----------------------------------------------------
+        # AUTOMATIC RAW TRAFFIC EVIDENCE
+        # ----------------------------------------------------
+
+        with st.expander(
+            "📡 Automatically Extracted Network Flow",
+            expanded=True,
+        ):
+
+            raw_flow = metadata.get(
+                "raw_flow",
+                {},
+            )
+
+            if raw_flow:
+
+                st.json(
+                    raw_flow
+                )
+
+                unavailable = [
+                    key
+                    for key, value in raw_flow.items()
+                    if value is None
+                ]
+
+                if unavailable:
+
+                    st.warning(
+                        "Unavailable measurements: "
+                        + ", ".join(unavailable)
                     )
 
                 st.caption(
-                    f"Matched terms: "
-                    f"{source.get('matched_terms', [])} "
-                    f"· Retrieval score: "
-                    f"{source.get('retrieval_score', source.get('score', 'N/A'))}"
+                    "These are original, unscaled "
+                    "traffic measurements. Missing "
+                    "values are shown as null and "
+                    "must not be interpreted as zero."
                 )
 
-                if source.get("content"):
+            else:
 
-                    st.write(
-                        source["content"]
+                st.info(
+                    "No raw flow measurements available."
+                )
+
+        # ----------------------------------------------------
+        # THREAT INTELLIGENCE AND RAG
+        # ----------------------------------------------------
+
+        with st.expander(
+            "🔍 Threat Intelligence and RAG Evidence",
+            expanded=True,
+        ):
+
+            st.write(
+                threat.get(
+                    "summary",
+                    "No threat summary available.",
+                )
+            )
+
+            family_analysis = threat.get(
+                "attack_family_analysis",
+                {},
+            )
+
+            if family_analysis:
+
+                st.markdown(
+                    "**Agent attack-family hypothesis**"
+                )
+
+                family = family_analysis.get(
+                    "family",
+                    "Attack type under investigation",
+                )
+
+                st.write(
+                    family
+                )
+
+                st.caption(
+                    "Method: "
+                    f"{family_analysis.get('method', 'unknown')}"
+                    " · Certainty: "
+                    f"{family_analysis.get('certainty', 'unknown')}"
+                )
+
+                family_confidence = family_analysis.get(
+                    "confidence"
+                )
+
+                validation_precision = family_analysis.get(
+                    "validation_precision"
+                )
+
+                family_method = family_analysis.get(
+                    "method"
+                )
+
+                # --------------------------------------------
+                # VALIDATED MULTICLASS FAMILY PREDICTION
+                # --------------------------------------------
+
+                if (
+                    family_method
+                    == "validated_random_forest"
+                ):
+
+                    if family_confidence is not None:
+
+                        st.metric(
+                            "Attack-family model confidence",
+                            f"{float(family_confidence) * 100:.2f}%",
+                        )
+
+                    if validation_precision is not None:
+
+                        st.caption(
+                            "Family-specific validation "
+                            "precision among accepted "
+                            "high-confidence predictions: "
+                            f"{float(validation_precision) * 100:.2f}%"
+                        )
+
+                    st.success(
+                        "Selective Random Forest hypothesis "
+                        "accepted under the validation policy. "
+                        "This is not a confirmed attack type."
                     )
 
-                st.divider()
+                # --------------------------------------------
+                # FAMILY NOT ACCEPTED
+                # --------------------------------------------
 
-        else:
+                elif (
+                    family
+                    == "Attack type under investigation"
+                ):
 
-            st.info(
-                "No matching local threat reference "
-                "was retrieved."
+                    st.info(
+                        "The attack-family classifier did "
+                        "not meet its validation-based "
+                        "acceptance requirements for this "
+                        "flow. Further investigation "
+                        "is required."
+                    )
+
+                    predicted_family = (
+                        family_analysis.get(
+                            "predicted_family"
+                        )
+                    )
+
+                    if predicted_family:
+
+                        st.caption(
+                            "An unaccepted model prediction "
+                            "exists but is intentionally "
+                            "not presented as the attack type."
+                        )
+
+                # --------------------------------------------
+                # NORMAL TRAFFIC
+                # --------------------------------------------
+
+                elif (
+                    family
+                    == "No attack indicated"
+                ):
+
+                    st.info(
+                        "The binary Transformer predicted "
+                        "Normal. Attack-family classification "
+                        "was not performed. A Normal result "
+                        "does not guarantee benign traffic."
+                    )
+
+                else:
+
+                    st.caption(
+                        "No validated multiclass family "
+                        "hypothesis is available."
+                    )
+
+                # --------------------------------------------
+                # SUPPORTING EVIDENCE
+                # --------------------------------------------
+
+                if family_analysis.get(
+                    "evidence"
+                ):
+
+                    st.write(
+                        "Supporting investigation evidence:"
+                    )
+
+                    st.json(
+                        family_analysis["evidence"]
+                    )
+
+                analyst_matches = (
+                    family_analysis.get(
+                        "analyst_context_matches",
+                        [],
+                    )
+                )
+
+                if analyst_matches:
+
+                    st.caption(
+                        "Analyst-provided context matches "
+                        "are separate from trained model "
+                        "predictions."
+                    )
+
+                    st.json(
+                        analyst_matches
+                    )
+
+                alternative_explanations = (
+                    family_analysis.get(
+                        "alternative_explanations",
+                        [],
+                    )
+                )
+
+                if alternative_explanations:
+
+                    with st.expander(
+                        "Interpretation limitations"
+                    ):
+
+                        for explanation in (
+                            alternative_explanations
+                        ):
+
+                            st.write(
+                                f"• {explanation}"
+                            )
+
+            # -----------------------------------------------
+            # RAG REFERENCES
+            # -----------------------------------------------
+
+            sources = threat.get(
+                "sources",
+                [],
             )
 
-        observed = threat.get(
-            "observed_features", {}
-        )
+            if sources:
 
-        if observed:
+                st.success(
+                    f"{len(sources)} local reference(s) "
+                    "retrieved."
+                )
 
-            st.markdown(
-                "**Investigation evidence received by agent**"
+                for i, source in enumerate(
+                    sources,
+                    start=1,
+                ):
+
+                    st.markdown(
+                        f"**Reference {i}: "
+                        f"{source.get('title', 'Untitled')}**"
+                    )
+
+                    st.write(
+                        "Source: "
+                        f"{source.get('source', 'Unknown')}"
+                    )
+
+                    url = source.get(
+                        "source_url",
+                        source.get("url"),
+                    )
+
+                    if url:
+
+                        st.markdown(
+                            f"[Open reference]({url})"
+                        )
+
+                    st.caption(
+                        "Matched terms: "
+                        f"{source.get('matched_terms', [])} "
+                        "· Retrieval score: "
+                        f"{source.get('retrieval_score', source.get('score', 'N/A'))}"
+                    )
+
+                    if source.get(
+                        "content"
+                    ):
+
+                        st.write(
+                            source["content"]
+                        )
+
+                    st.divider()
+
+            else:
+
+                st.info(
+                    "No matching local threat reference "
+                    "was retrieved."
+                )
+
+            observed = threat.get(
+                "observed_features",
+                {},
             )
 
-            st.json(observed)
+            if observed:
 
+                st.markdown(
+                    "**Investigation evidence received by agent**"
+                )
 
-    # ========================================================
-    # RISK ASSESSMENT
-    # ========================================================
+                st.json(
+                    observed
+                )
 
-    with st.expander(
-        "⚠️ Preliminary Risk Assessment",
-        expanded=True,
-    ):
+        # ----------------------------------------------------
+        # RISK ASSESSMENT
+        # ----------------------------------------------------
 
-        st.write(
-            risk.get(
-                "rationale", ""
+        with st.expander(
+            "⚠️ Preliminary Risk Assessment",
+            expanded=True,
+        ):
+
+            st.write(
+                risk.get(
+                    "rationale",
+                    "",
+                )
+            )
+
+            indicators = risk.get(
+                "critical_indicators",
+                [],
+            )
+
+            if indicators:
+
+                st.markdown(
+                    "**Explicit critical indicators**"
+                )
+
+                st.json(
+                    indicators
+                )
+
+            st.caption(
+                "Assessment type: "
+                f"{risk.get('assessment_type', 'unknown')}"
+                " · Requires review: "
+                f"{risk.get('requires_review', False)}"
+            )
+
+            st.caption(
+                "Model confidence, attack-family "
+                "hypotheses and generic RAG references "
+                "are not independent proof of "
+                "attack severity."
+            )
+
+        # ----------------------------------------------------
+        # INCIDENT REPORT
+        # ----------------------------------------------------
+
+        with st.expander(
+            "📄 Preliminary Incident Report"
+        ):
+
+            report = latest.get(
+                "report",
+                {},
+            )
+
+            st.json(
+                report
+            )
+
+            st.download_button(
+                "⬇ Download incident report (JSON)",
+                data=json.dumps(
+                    report,
+                    indent=2,
+                    ensure_ascii=False,
+                    default=str,
+                ),
+                file_name=(
+                    "incident_report_"
+                    f"{report.get('report_id', 'latest')}.json"
+                ),
+                mime="application/json",
+            )
+
+    # --------------------------------------------------------
+    # INCIDENT HISTORY
+    # --------------------------------------------------------
+
+    st.divider()
+
+    st.subheader(
+        "🧾 Dashboard Incident History"
+    )
+
+    if events:
+
+        history = (
+            pd.DataFrame(events)
+            .sort_values(
+                "sample",
+                ascending=False,
             )
         )
 
-        indicators = risk.get(
-            "critical_indicators", []
+        st.markdown(
+            history.to_html(
+                index=False,
+                escape=True,
+                border=0,
+            ),
+            unsafe_allow_html=True,
         )
-
-        if indicators:
-
-            st.markdown(
-                "**Explicit critical indicators**"
-            )
-
-            st.json(indicators)
-
-        st.caption(
-            f"Assessment type: "
-            f"{risk.get('assessment_type', 'unknown')} "
-            f"· Requires review: "
-            f"{risk.get('requires_review', False)}"
-        )
-
-        st.caption(
-            "Model confidence and generic RAG references "
-            "are not independent proof of attack severity."
-        )
-
-
-    # ========================================================
-    # INCIDENT REPORT
-    # ========================================================
-
-    with st.expander(
-        "📄 Preliminary Incident Report"
-    ):
-
-        report = latest.get(
-            "report", {}
-        )
-
-        st.json(report)
 
         st.download_button(
-            "⬇ Download incident report (JSON)",
-            data=json.dumps(
-                report,
-                indent=2,
-                ensure_ascii=False,
-                default=str,
-            ),
+            "⬇ Download session history (CSV)",
+            data=history.to_csv(
+                index=False
+            ).encode("utf-8"),
             file_name=(
-                f"incident_report_"
-                f"{report.get('report_id', 'latest')}.json"
+                "nids_dashboard_session_history.csv"
             ),
-            mime="application/json",
+            mime="text/csv",
         )
 
+    else:
 
-# ============================================================
-# 16. INCIDENT HISTORY
-# ============================================================
-
-st.divider()
-st.subheader("🧾 Dashboard Incident History")
-
-if events:
-
-    history = (
-        pd.DataFrame(events)
-        .sort_values(
-            "sample",
-            ascending=False,
+        st.caption(
+            "Incident history will appear here "
+            "as samples are analysed."
         )
-    )
 
-    st.markdown(
-        history.to_html(
-            index=False,
-            escape=True,
-            border=0,
-        ),
-        unsafe_allow_html=True,
-    )
+    # --------------------------------------------------------
+    # FOOTER
+    # --------------------------------------------------------
 
-    st.download_button(
-        "⬇ Download session history (CSV)",
-        data=history.to_csv(
-            index=False
-        ).encode("utf-8"),
-        file_name="nids_dashboard_session_history.csv",
-        mime="text/csv",
-    )
-
-else:
+    st.divider()
 
     st.caption(
-        "Incident history will appear here "
-        "as samples are analysed."
+        "Research prototype | "
+        "Binary Normal/Attack Transformer | "
+        "Selective Random Forest attack-family hypotheses | "
+        "Automatic raw-flow extraction | "
+        "Missing-value-aware investigation data | "
+        "Explainable AI | "
+        "Preliminary rule-based risk | "
+        "Local keyword-based RAG | "
+        "Dataset replay, not live packet capture."
     )
 
 
 # ============================================================
-# 17. FOOTER
+# 10. START DASHBOARD
 # ============================================================
 
-st.divider()
-
-st.caption(
-    "Research prototype | Binary Normal/Attack Transformer | "
-    "Automatic raw-flow extraction | "
-    "Missing-value-aware investigation data | "
-    "Explainable AI | Preliminary rule-based risk | "
-    "Local keyword-based RAG | Dataset replay, "
-    "not live packet capture."
-)
+render_replay_dashboard()

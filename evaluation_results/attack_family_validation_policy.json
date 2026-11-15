@@ -1,0 +1,63 @@
+{
+  "model_type": "RandomForestClassifier",
+  "training_source": "UNSW-NB15",
+  "validation_fraction": 0.2,
+  "random_state": 42,
+  "minimum_confidence": 0.9,
+  "minimum_validation_precision": 0.9,
+  "minimum_validation_predictions": 30,
+  "families": {
+    "Analysis": {
+      "eligible": false,
+      "validation_predictions": 0,
+      "validation_precision": 0.0
+    },
+    "Backdoor": {
+      "eligible": false,
+      "validation_predictions": 0,
+      "validation_precision": 0.0
+    },
+    "DoS": {
+      "eligible": false,
+      "validation_predictions": 11,
+      "validation_precision": 1.0
+    },
+    "Exploits": {
+      "eligible": true,
+      "validation_predictions": 451,
+      "validation_precision": 0.9556541019955654
+    },
+    "Fuzzers": {
+      "eligible": false,
+      "validation_predictions": 29,
+      "validation_precision": 0.896551724137931
+    },
+    "Generic": {
+      "eligible": true,
+      "validation_predictions": 3611,
+      "validation_precision": 0.9997230684021047
+    },
+    "Reconnaissance": {
+      "eligible": true,
+      "validation_predictions": 438,
+      "validation_precision": 0.9954337899543378
+    },
+    "Shellcode": {
+      "eligible": false,
+      "validation_predictions": 0,
+      "validation_precision": 0.0
+    },
+    "Worms": {
+      "eligible": false,
+      "validation_predictions": 0,
+      "validation_precision": 0.0
+    }
+  },
+  "limitations": [
+    "Family predictions are hypotheses, not confirmed attacks.",
+    "Validation precision is estimated from a single stratified split.",
+    "Rare families have limited validation support.",
+    "Confidence is not a calibrated probability guarantee.",
+    "Row-level validation may contain related network flows."
+  ]
+}

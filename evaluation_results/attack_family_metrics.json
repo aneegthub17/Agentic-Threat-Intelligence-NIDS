@@ -1,58 +1,115 @@
 {
-    "total_samples": 175341,
-    "actual_dos_samples": 12264,
-    "model_predicted_attack_samples": 128353,
-    "possible_dos_hypotheses": 0,
-    "all_samples_pipeline_metrics": {
-        "true_positive": 0,
-        "true_negative": 163077,
-        "false_positive": 0,
-        "false_negative": 12264,
-        "accuracy": 0.9300562903143018,
-        "precision": 0.0,
-        "recall": 0.0,
-        "f1_score": 0.0,
-        "false_positive_rate": 0.0
+  "model": "RandomForestClassifier",
+  "dataset": "UNSW-NB15",
+  "training_rows": 82332,
+  "evaluation_rows": 175341,
+  "feature_columns": [
+    "protocol",
+    "duration",
+    "src_packets",
+    "dst_packets",
+    "src_bytes",
+    "dst_bytes",
+    "src_pkt_size_mean",
+    "dst_pkt_size_mean",
+    "src_iat_mean",
+    "dst_iat_mean",
+    "src_tcp_window",
+    "dst_tcp_window",
+    "src_packet_rate",
+    "dst_packet_rate",
+    "src_bytes_rate",
+    "dst_bytes_rate"
+  ],
+  "classes": [
+    "Analysis",
+    "Backdoor",
+    "DoS",
+    "Exploits",
+    "Fuzzers",
+    "Generic",
+    "Normal",
+    "Reconnaissance",
+    "Shellcode",
+    "Worms"
+  ],
+  "accuracy": 0.7479825026662332,
+  "macro_f1": 0.5180916638401591,
+  "weighted_f1": 0.7599465988156576,
+  "classification_report": {
+    "Normal": {
+      "precision": 0.843144460777763,
+      "recall": 0.9013214285714286,
+      "f1-score": 0.8712628599047159,
+      "support": 56000.0
     },
-    "predicted_attack_subset_metrics": {
-        "true_positive": 0,
-        "true_negative": 116678,
-        "false_positive": 0,
-        "false_negative": 11675,
-        "accuracy": 0.9090399133639261,
-        "precision": 0.0,
-        "recall": 0.0,
-        "f1_score": 0.0,
-        "false_positive_rate": 0.0
+    "Analysis": {
+      "precision": 0.054657113613101334,
+      "recall": 0.1335,
+      "f1-score": 0.07755991285403051,
+      "support": 2000.0
     },
-    "family_counts": {
-        "Not applicable": 46988,
-        "Undetermined": 128353
+    "Backdoor": {
+      "precision": 0.06710343458407782,
+      "recall": 0.19358533791523483,
+      "f1-score": 0.0996609169983783,
+      "support": 1746.0
     },
-    "traffic_pattern_counts": {
-        "high_byte_rate": 82645,
-        "asymmetric_packet_flow": 381
+    "DoS": {
+      "precision": 0.33212742437945936,
+      "recall": 0.5389758643183301,
+      "f1-score": 0.41099297394764656,
+      "support": 12264.0
     },
-    "actual_category_counts": {
-        "Normal": 56000,
-        "Backdoor": 1746,
-        "Analysis": 2000,
-        "Fuzzers": 18184,
-        "Shellcode": 1133,
-        "Reconnaissance": 10491,
-        "Exploits": 33393,
-        "DoS": 12264,
-        "Worms": 130,
-        "Generic": 40000
+    "Exploits": {
+      "precision": 0.8154279501877841,
+      "recall": 0.49414547959153116,
+      "f1-score": 0.6153760092487274,
+      "support": 33393.0
     },
-    "missing_numeric_measurements": 10628,
-    "evaluation_seconds": 25.304243999999017,
-    "methodology": "Binary Transformer prediction followed by unvalidated numerical flow heuristics. Ground-truth attack_category was used only after predictions for evaluation.",
-    "limitations": [
-        "Single-flow heuristics do not confirm DoS.",
-        "Screening thresholds are not calibrated.",
-        "Duration units require verification.",
-        "Binary model false negatives prevent downstream family hypotheses.",
-        "Row alignment relies on preprocessing preserving the original sample order."
-    ]
+    "Fuzzers": {
+      "precision": 0.6432793807178043,
+      "recall": 0.5026946766388033,
+      "f1-score": 0.5643637710687164,
+      "support": 18184.0
+    },
+    "Generic": {
+      "precision": 0.9964154972544235,
+      "recall": 0.979875,
+      "f1-score": 0.9880760310577795,
+      "support": 40000.0
+    },
+    "Reconnaissance": {
+      "precision": 0.818774844562226,
+      "recall": 0.7657039367076541,
+      "f1-score": 0.7913506058516402,
+      "support": 10491.0
+    },
+    "Shellcode": {
+      "precision": 0.2792375064399794,
+      "recall": 0.4783759929390997,
+      "f1-score": 0.35263500325309044,
+      "support": 1133.0
+    },
+    "Worms": {
+      "precision": 0.42857142857142855,
+      "recall": 0.3923076923076923,
+      "f1-score": 0.40963855421686746,
+      "support": 130.0
+    },
+    "accuracy": 0.7479825026662332,
+    "macro avg": {
+      "precision": 0.5278739041088047,
+      "recall": 0.5380485408989775,
+      "f1-score": 0.5180916638401591,
+      "support": 175341.0
+    },
+    "weighted avg": {
+      "precision": 0.7942308548755722,
+      "recall": 0.7479825026662332,
+      "f1-score": 0.7599465988156576,
+      "support": 175341.0
+    }
+  },
+  "evaluation_note": "Separate multiclass family classifier. Test-set evaluation is descriptive. Per-class performance and uncertainty must be considered before deployment."
 }

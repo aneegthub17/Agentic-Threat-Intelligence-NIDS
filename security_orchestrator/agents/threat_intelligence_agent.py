@@ -1,16 +1,22 @@
 
 import math
 import re
+from pathlib import Path
+
+import joblib
+import numpy as np
+import pandas as pd
 
 
 class ThreatIntelligenceAgent:
     """
     Investigate validated binary Transformer detections.
 
-    Numerical observations describe traffic characteristics.
-    They are not validated attack-family classifications.
+    A separate Random Forest provides selective attack-family
+    hypotheses. The validation policy determines which family
+    predictions are eligible for display.
 
-    Ground-truth labels must not enter agent reasoning.
+    Ground-truth labels must never enter model inference.
     """
 
     FAMILY_KEYWORDS = {
@@ -55,14 +61,20 @@ class ThreatIntelligenceAgent:
         "true_label",
     }
 
-    # Illustrative screening thresholds, not validated
-    # intrusion or attack-family decision boundaries.
     HIGH_PACKET_RATE = 10000.0
     HIGH_PACKET_COUNT = 1000.0
     HIGH_BYTE_RATE = 10000000.0
-
     ASYMMETRY_RATIO = 10.0
     MIN_ASYMMETRY_PACKETS = 100.0
+
+    MODEL_PATH = (
+        Path(__file__).resolve().parents[2]
+        / "detection_engine"
+        / "models"
+        / "attack_family_rf.joblib"
+    )
+
+    _cached_family_artifact = None
 
     def __init__(self, retriever=None):
         self.retriever = retriever
@@ -87,14 +99,11 @@ class ThreatIntelligenceAgent:
 
             if value is None:
                 cleaned[key] = None
-
             elif isinstance(value, bool):
                 cleaned[key] = value
-
             elif isinstance(value, str):
                 cleaned[key] = value
-
-            elif isinstance(value, (int, float)):
+            elif isinstance(value, (int, float, np.number)):
                 number = float(value)
                 cleaned[key] = (
                     number if math.isfinite(number) else None
@@ -156,11 +165,9 @@ class ThreatIntelligenceAgent:
 
     def _numerical_pattern_analysis(self, features):
         """
-        Describe measurable flow characteristics.
-
-        Do not assign an attack family from these patterns.
+        Describe observed traffic characteristics without
+        treating them as confirmed attack-family evidence.
         """
-
         observations = []
 
         src_packets = self._numeric(
@@ -200,9 +207,7 @@ class ThreatIntelligenceAgent:
                     "direction": direction,
                     "observed_packet_rate": rate,
                     "observed_packet_count": packets,
-                    "screening_threshold": (
-                        self.HIGH_PACKET_RATE
-                    ),
+                    "screening_threshold": self.HIGH_PACKET_RATE,
                     "interpretation": (
                         "Elevated packet rate and count "
                         "within a single flow. This is not "
@@ -222,9 +227,7 @@ class ThreatIntelligenceAgent:
                     "pattern": "high_byte_rate",
                     "direction": direction,
                     "observed_bytes_per_second": rate,
-                    "screening_threshold": (
-                        self.HIGH_BYTE_RATE
-                    ),
+                    "screening_threshold": self.HIGH_BYTE_RATE,
                     "interpretation": (
                         "Elevated byte rate. This can occur "
                         "in legitimate traffic and does not "
@@ -238,7 +241,6 @@ class ThreatIntelligenceAgent:
         ):
             larger = max(src_packets, dst_packets)
             smaller = min(src_packets, dst_packets)
-
             ratio = larger / max(smaller, 1.0)
 
             if (
@@ -276,22 +278,136 @@ class ThreatIntelligenceAgent:
 
         return observations
 
+    @classmethod
+    def _load_family_artifact(cls):
+        """
+        Load the family model once, not once per replay sample.
+
+        Joblib files must come from a trusted local source.
+        """
+        if cls._cached_family_artifact is None:
+            if not cls.MODEL_PATH.is_file():
+                return None
+
+            cls._cached_family_artifact = joblib.load(
+                cls.MODEL_PATH
+            )
+
+        return cls._cached_family_artifact
+
+    def _predict_family(self, features):
+        """
+        Predict a family using network-flow inputs only.
+
+        Return the model's raw hypothesis and the
+        validation-based eligibility decision.
+        """
+        artifact = self._load_family_artifact()
+
+        if artifact is None:
+            return {
+                "status": "model_unavailable",
+                "reason": "Family classifier not found.",
+            }
+
+        feature_columns = artifact["feature_columns"]
+
+        missing = [
+            name
+            for name in feature_columns
+            if name not in features
+        ]
+
+        if missing:
+            return {
+                "status": "missing_features",
+                "reason": (
+                    "Required network-flow features "
+                    "are missing."
+                ),
+                "missing_features": missing,
+            }
+
+        row = {}
+
+        for name in feature_columns:
+            value = features[name]
+
+            if name == "protocol":
+                row[name] = (
+                    str(value)
+                    if value is not None
+                    else "unknown"
+                )
+            else:
+                row[name] = self._numeric(
+                    features, name
+                )
+
+        frame = pd.DataFrame(
+            [row],
+            columns=feature_columns,
+        )
+
+        pipeline = artifact["pipeline"]
+        probabilities = pipeline.predict_proba(frame)[0]
+
+        classes = pipeline.classes_
+        best_index = int(np.argmax(probabilities))
+
+        predicted_family = str(classes[best_index])
+        confidence = float(probabilities[best_index])
+
+        policy = artifact.get(
+            "validation_policy", {}
+        )
+
+        minimum_confidence = float(
+            policy.get("minimum_confidence", 1.0)
+        )
+
+        family_details = policy.get(
+            "families", {}
+        ).get(predicted_family, {})
+
+        eligible = bool(
+            family_details.get("eligible", False)
+        )
+
+        accepted = (
+            predicted_family != "Normal"
+            and eligible
+            and confidence >= minimum_confidence
+        )
+
+        return {
+            "status": "completed",
+            "predicted_family": predicted_family,
+            "confidence": confidence,
+            "minimum_confidence": minimum_confidence,
+            "validation_eligible": eligible,
+            "accepted": accepted,
+            "validation_precision": family_details.get(
+                "validation_precision"
+            ),
+            "validation_predictions": family_details.get(
+                "validation_predictions", 0
+            ),
+        }
+
     def _investigate_family(
         self, prediction, features, patterns=None
     ):
-        """
-        Only analyst-provided context can suggest a family.
-
-        No numerical rule assigns an attack family.
-        """
-
         if prediction != "Attack":
             return {
-                "family": "Not applicable",
-                "method": "not_applicable",
+                "family": "No attack indicated",
+                "method": "binary_transformer",
                 "evidence": [],
                 "certainty": "not_assessed",
-                "alternative_explanations": [],
+                "alternative_explanations": [
+                    "A Normal prediction does not guarantee "
+                    "the absence of malicious activity."
+                ],
             }
 
         if patterns is None:
@@ -299,54 +415,85 @@ class ThreatIntelligenceAgent:
                 features
             )
 
-        matches = self._analyst_family_matches(
+        analyst_matches = self._analyst_family_matches(
             features
         )
 
-        if len(matches) == 1:
-            match = matches[0]
-
-            return {
-                "family": match["family"],
-                "method": "analyst_context_keyword_match",
-                "evidence": [
-                    {
-                        "type": "analyst_context",
-                        "matched_keywords": (
-                            match["keywords"]
-                        ),
-                    }
-                ] + patterns,
-                "certainty": "unverified_hypothesis",
-                "alternative_explanations": [
-                    "The analyst description is not "
-                    "independent verification.",
-                    "Traffic patterns can also occur "
-                    "during benign activity.",
-                ],
+        try:
+            model_result = self._predict_family(
+                features
+            )
+        except Exception as exc:
+            model_result = {
+                "status": "inference_error",
+                "reason": (
+                    f"Family inference failed: "
+                    f"{type(exc).__name__}"
+                ),
             }
 
-        if len(matches) > 1:
+        if (
+            model_result.get("status") == "completed"
+            and model_result.get("accepted")
+        ):
+            family = model_result["predicted_family"]
+
             return {
-                "family": "Undetermined",
-                "method": "ambiguous_analyst_context",
-                "evidence": patterns,
-                "certainty": "unknown",
+                "family": f"Possible {family}",
+                "method": "validated_random_forest",
+                "certainty": "model_hypothesis",
+                "confidence": model_result["confidence"],
+                "predicted_family": family,
+                "validation_precision": model_result[
+                    "validation_precision"
+                ],
+                "evidence": [
+                    {
+                        "type": "multiclass_model_prediction",
+                        "model": "RandomForestClassifier",
+                        "predicted_family": family,
+                        "confidence": model_result[
+                            "confidence"
+                        ],
+                        "validation_precision": model_result[
+                            "validation_precision"
+                        ],
+                        "validation_predictions": model_result[
+                            "validation_predictions"
+                        ],
+                    }
+                ] + patterns,
+                "analyst_context_matches": analyst_matches,
                 "alternative_explanations": [
-                    "Multiple attack families were "
-                    "mentioned in the analyst context."
+                    "This is a learned family hypothesis, "
+                    "not a confirmed attack classification.",
+                    "The model can make incorrect predictions "
+                    "even at high confidence.",
+                    "Validation performance may not generalize "
+                    "to new network environments.",
                 ],
             }
 
         return {
-            "family": "Undetermined",
-            "method": "insufficient_flow_evidence",
+            "family": "Attack type under investigation",
+            "method": "selective_random_forest",
+            "certainty": "insufficient_reliable_evidence",
+            "confidence": model_result.get(
+                "confidence"
+            ),
+            "predicted_family": model_result.get(
+                "predicted_family"
+            ),
+            "model_status": model_result.get(
+                "status"
+            ),
             "evidence": patterns,
-            "certainty": "unknown",
+            "analyst_context_matches": analyst_matches,
             "alternative_explanations": [
-                "Numerical flow observations are "
-                "not sufficient for reliable "
-                "attack-family identification."
+                "The family model did not meet its "
+                "validation-based acceptance requirements.",
+                "An Attack prediction does not establish "
+                "a specific attack family.",
             ],
         }
 
@@ -391,16 +538,17 @@ class ThreatIntelligenceAgent:
         if prediction == "Attack":
             summary = (
                 "The Transformer classified this network "
-                "flow as Attack. Further investigation is required. "
-                "Numerical observations describe traffic characteristics but do "
-                "not independently identify an attack "
-                "family or establish compromise."
+                "flow as Attack. Further investigation is "
+                "required. A separate Random Forest provides "
+                "a selective attack-family hypothesis when "
+                "validation requirements are met. This does "
+                "not establish compromise."
             )
         else:
             summary = (
                 "The Transformer classified this network "
-                "flow as Normal. This does not guarantee that the "
-                "traffic is benign."
+                "flow as Normal. This does not guarantee "
+                "that the traffic is benign."
             )
 
         evidence = []
@@ -420,8 +568,6 @@ class ThreatIntelligenceAgent:
                     "incident response",
                 ]
 
-            # Search terms describe observations,
-            # not verified adversary techniques.
             pattern_names = {
                 item["pattern"]
                 for item in patterns
@@ -440,9 +586,9 @@ class ThreatIntelligenceAgent:
                 ])
 
             if "asymmetric_packet_flow" in pattern_names:
-                query_parts.extend([
-                    "network flow investigation",
-                ])
+                query_parts.append(
+                    "network flow investigation"
+                )
 
             context = features.get(
                 "investigation_context"
@@ -452,15 +598,17 @@ class ThreatIntelligenceAgent:
                 isinstance(context, str)
                 and context.strip()
             ):
-                query_parts.append(context.strip())
+                query_parts.append(
+                    context.strip()
+                )
 
-            family = family_analysis["family"]
-
-            if family not in {
-                "Undetermined",
-                "Not applicable",
-            }:
-                query_parts.append(family)
+            if (
+                family_analysis.get("method")
+                == "validated_random_forest"
+            ):
+                query_parts.append(
+                    family_analysis["predicted_family"]
+                )
 
             retrieval_query = " ".join(
                 query_parts

@@ -1,0 +1,10 @@
+attack_category,total_attacks,missed_attacks,detected_attacks,miss_rate_percent
+Fuzzers,18184,3962,14222,21.79
+Exploits,33393,1415,31978,4.24
+DoS,12264,589,11675,4.8
+Analysis,2000,179,1821,8.95
+Shellcode,1133,142,991,12.53
+Generic,40000,110,39890,0.28
+Backdoor,1746,42,1704,2.41
+Reconnaissance,10491,38,10453,0.36
+Worms,130,11,119,8.46
